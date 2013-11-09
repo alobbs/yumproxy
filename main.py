@@ -45,7 +45,7 @@ DOMAINS = {
 
 # Constants
 CACHE_DIR      = '/var/cache/yumproxy'
-CACHEABLE_EXTS = ('.rpm', '.sqlite.bz2', '.xml', '.xml.gz', '.qcow2', '.raw.xz', '.iso', 'filelist.gz', 'vmlinuz', 'initrd.img')
+CACHEABLE_EXTS = ('.rpm', '.img', '.sqlite.bz2', '.xml', '.xml.gz', '.qcow2', '.raw.xz', '.iso', 'filelist.gz', 'vmlinuz')
 CRLF           = "\r\n"
 
 class CacheProtocol (protocol.Protocol):

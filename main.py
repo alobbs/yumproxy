@@ -29,6 +29,7 @@
 
 import re
 import os
+import logging
 
 from twisted.web.client import getPage
 from twisted.web import static, proxy, server
@@ -44,7 +45,7 @@ DOMAINS = {
 
 # Constants
 CACHE_DIR      = '/var/cache/yumproxy'
-CACHEABLE_EXTS = ('.rpm', '.sqlite.bz2', '.xml', '.xml.gz', '.qcow2', '.raw.xz', '.iso', 'filelist.gz')
+CACHEABLE_EXTS = ('.rpm', '.sqlite.bz2', '.xml', '.xml.gz', '.qcow2', '.raw.xz', '.iso', 'filelist.gz', 'vmlinuz', 'initrd.img')
 CRLF           = "\r\n"
 
 class CacheProtocol (protocol.Protocol):
@@ -55,10 +56,13 @@ class CacheProtocol (protocol.Protocol):
 
     def dataReceived(self, data):
         # Read the URL
-        tmp = re.findall (r'GET (.+?) ', data.split('\n')[0])
+        tmp = re.findall (r'(GET|HEAD) (.+?) ', data.split('\n')[0])
         if not tmp:
+            logging.error ("Couldn't parse request: "+data)
             return
-        url = tmp[0]
+
+        url = tmp[0][1]
+        logging.info ("Received request: %s" %(url))
 
         # In the cache?
         self.local_fp = os.path.join (CACHE_DIR, url[1:])
@@ -66,7 +70,8 @@ class CacheProtocol (protocol.Protocol):
         if os.path.exists (self.local_fp) and \
            os.path.isfile (self.local_fp) and \
            self._get_should_cache (self.local_fp):
-            print "Serving", self.local_fp
+
+            logging.info ("HIT: %s" %(self.local_fp))
             with open(self.local_fp, 'r') as f:
                 while True:
                     block = f.read(2**21)
@@ -84,6 +89,7 @@ class CacheProtocol (protocol.Protocol):
 
         domain_info = DOMAINS[top_dir]
         uri = "http://" + domain_info['domain'] + domain_info['prefix'] + url
+        logging.info ("MISS: %s" %(uri))
 
         # Sub-request
         deferredData = getPage(uri)
@@ -99,6 +105,9 @@ class CacheProtocol (protocol.Protocol):
                 return True
 
     def sendAndClose(self, data):
+        # Header?
+        data = 'HTTP/1.0 200 OK' + CRLF + CRLF + data
+
         # File cache
         if not os.path.exists (self.local_fp) and \
            self._get_should_cache (self.local_fp):
@@ -106,10 +115,9 @@ class CacheProtocol (protocol.Protocol):
             if not os.path.exists(dirname):
                 os.makedirs (dirname)
 
-            print "local=", self.local_fp
             with open(self.local_fp, 'w+b') as f:
                 f.write (data)
-                print "Wrote", self.local_fp
+                logging.info ("STORED: %s" %(self.local_fp))
 
         # Transfer it to the client
         self.transport.write(data)
@@ -119,5 +127,10 @@ class CacheProtocol (protocol.Protocol):
 class CacheFactory(protocol.ServerFactory):
     protocol = CacheProtocol
 
-endpoints.serverFromString(reactor, "tcp:8080").listen(CacheFactory())
-reactor.run()
+def main():
+    endpoints.serverFromString(reactor, "tcp:8080").listen(CacheFactory())
+    reactor.run()
+
+if __name__ == '__main__':
+    logging.basicConfig(level=logging.INFO)
+    main()
